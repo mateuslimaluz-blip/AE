@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { RoleSelector } from "@/components/RoleSelector";
 import { DiceRoller } from "@/components/DiceRoller";
-import { RoundCard } from "@/components/RoundCard";
+import { RoundCard, Round } from "@/components/RoundCard";
 import { GameStats } from "@/components/GameStats";
-import { gameRounds } from "@/data/rounds";
+import { getRoundsByRole } from "@/data/rounds";
 import { Button } from "@/components/ui/button";
 import { RotateCcw, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 const Index = () => {
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [gameRounds, setGameRounds] = useState<Round[]>([]);
   const [currentRound, setCurrentRound] = useState(0);
   const [diceValue, setDiceValue] = useState<number | null>(null);
   const [satisfaction, setSatisfaction] = useState(80);
@@ -18,8 +19,21 @@ const Index = () => {
   const [completedRounds, setCompletedRounds] = useState<number[]>([]);
   const [gameFinished, setGameFinished] = useState(false);
 
+  useEffect(() => {
+    if (selectedRole) {
+      const rounds = getRoundsByRole(selectedRole);
+      setGameRounds(rounds);
+    }
+  }, [selectedRole]);
+
   const handleRoleSelect = (roleId: string) => {
     setSelectedRole(roleId);
+    setCurrentRound(0);
+    setCompletedRounds([]);
+    setDiceValue(null);
+    setSatisfaction(80);
+    setEmpathy(0);
+    setGameFinished(false);
     toast.success("Papel selecionado! Role o dado para começar a primeira rodada.");
   };
 
@@ -36,13 +50,30 @@ const Index = () => {
     const success = diceValue! >= option.successThreshold;
 
     if (success) {
-      setSatisfaction((prev) => Math.min(100, prev + option.satisfactionImpact));
-      setEmpathy((prev) => prev + option.empathyGain);
-      toast.success(`Ótima escolha! +${option.empathyGain} XP de Empatia`);
+      // SUCESSO: aplica impacto total
+      const newSatisfaction = Math.min(100, satisfaction + option.satisfactionImpact);
+      const newEmpathy = empathy + option.empathyGain;
+      
+      setSatisfaction(newSatisfaction);
+      setEmpathy(newEmpathy);
+      toast.success(`✓ Ótima escolha! +${option.empathyGain} XP de Empatia`, {
+        description: `Satisfação: ${Math.round(newSatisfaction)}% (+${option.satisfactionImpact})`,
+      });
     } else {
-      setSatisfaction((prev) => Math.max(0, prev + option.satisfactionImpact / 2));
-      setEmpathy((prev) => prev + Math.floor(option.empathyGain / 3));
-      toast.error("A ação não foi totalmente efetiva. Continue tentando!");
+      // FALHA: aplica impacto negativo
+      const satisfactionLoss = Math.abs(option.satisfactionImpact) > 0 
+        ? -Math.abs(option.satisfactionImpact) 
+        : -10; // penalidade padrão se não houver impacto negativo definido
+      const empathyGain = Math.max(0, Math.floor(option.empathyGain / 4)); // apenas 25% do XP
+      
+      const newSatisfaction = Math.max(0, satisfaction + satisfactionLoss);
+      const newEmpathy = empathy + empathyGain;
+      
+      setSatisfaction(newSatisfaction);
+      setEmpathy(newEmpathy);
+      toast.error(`✗ Ação inadequada! Resultado do dado insuficiente (${diceValue}/${option.successThreshold})`, {
+        description: `Satisfação: ${Math.round(newSatisfaction)}% (${satisfactionLoss}) • XP: +${empathyGain}`,
+      });
     }
 
     setCompletedRounds([...completedRounds, roundIndex]);
